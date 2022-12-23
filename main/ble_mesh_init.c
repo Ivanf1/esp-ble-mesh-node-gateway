@@ -15,7 +15,7 @@
 
 #include "esp_ble_mesh_defs.h"
 
-#define TAG "EXAMPLE_INIT"
+#define TAG "BLE_MESH_INIT"
 
 void ble_mesh_get_dev_uuid(uint8_t *dev_uuid) {
   if (dev_uuid == NULL) {

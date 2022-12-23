@@ -12,8 +12,13 @@
 
 #include "ble_mesh_init.h"
 #include "ble_mesh_nvs.h"
+#include "mqtt_app.h"
+#include "mqtt_client.h"
+#include "wifi_connect.h"
 
-#define TAG "NODE_GATEWAY"
+#include "sdkconfig.h"
+
+#define TAG "GATEWAY"
 
 #define CID_ESP 0x02E5
 
@@ -200,12 +205,6 @@ void app_main(void) {
     return;
   }
 
-  /* Open nvs namespace for storing/restoring mesh example info */
-  err = ble_mesh_nvs_open(&NVS_HANDLE);
-  if (err) {
-    return;
-  }
-
   ble_mesh_get_dev_uuid(dev_uuid);
 
   /* Initialize the Bluetooth Mesh Subsystem */
@@ -213,4 +212,7 @@ void app_main(void) {
   if (err) {
     ESP_LOGE(TAG, "Bluetooth mesh init failed (err %d)", err);
   }
+
+  wifi_init_sta();
+  mqtt_app_start();
 }
