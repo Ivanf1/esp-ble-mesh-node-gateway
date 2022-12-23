@@ -1,14 +1,14 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "esp_log.h"
-#include "nvs_flash.h"
-
 #include "esp_ble_mesh_common_api.h"
 #include "esp_ble_mesh_config_model_api.h"
 #include "esp_ble_mesh_generic_model_api.h"
 #include "esp_ble_mesh_networking_api.h"
 #include "esp_ble_mesh_provisioning_api.h"
+#include "esp_log.h"
+#include "nvs_flash.h"
+#include <sys/time.h>
 
 #include "ble_mesh_init.h"
 #include "ble_mesh_nvs.h"
@@ -118,6 +118,12 @@ static void ble_mesh_generic_client_cb(esp_ble_mesh_generic_client_cb_event_t ev
     break;
   case ESP_BLE_MESH_GENERIC_CLIENT_PUBLISH_EVT:
     ESP_LOGI(TAG, "ESP_BLE_MESH_GENERIC_CLIENT_PUBLISH_EVT");
+    ESP_LOGI(TAG, "addr: %04x, status: %d", param->params->ctx.addr, param->status_cb.onoff_status.present_onoff);
+    char topic[16];
+    char status[2];
+    snprintf(topic, 16, "ble_mesh/%04x", param->params->ctx.addr);
+    snprintf(status, 2, "%d", param->status_cb.onoff_status.present_onoff);
+    send_mqtt_message(topic, status);
     break;
   case ESP_BLE_MESH_GENERIC_CLIENT_TIMEOUT_EVT:
     break;

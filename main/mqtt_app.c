@@ -23,12 +23,15 @@
 #include "secrets.h"
 
 static const char *TAG = "MQTT";
+esp_mqtt_client_handle_t client;
 
 static void log_error_if_nonzero(const char *message, int error_code) {
   if (error_code != 0) {
     ESP_LOGE(TAG, "Last error %s: 0x%x", message, error_code);
   }
 }
+
+void send_mqtt_message(const char *topic, const char *data) { esp_mqtt_client_publish(client, topic, data, 0, 1, 0); }
 
 /**
  * @brief Event handler registered to receive MQTT events
@@ -43,22 +46,9 @@ static void log_error_if_nonzero(const char *message, int error_code) {
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
   ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%d", base, event_id);
   esp_mqtt_event_handle_t event = event_data;
-  esp_mqtt_client_handle_t client = event->client;
-  int msg_id;
   switch ((esp_mqtt_event_id_t)event_id) {
   case MQTT_EVENT_CONNECTED:
     ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-    msg_id = esp_mqtt_client_publish(client, "/topic/qos1", "data_3", 0, 1, 0);
-    ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-
-    msg_id = esp_mqtt_client_subscribe(client, "/topic/qos0", 0);
-    ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
-
-    msg_id = esp_mqtt_client_subscribe(client, "/topic/qos1", 1);
-    ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
-
-    msg_id = esp_mqtt_client_unsubscribe(client, "/topic/qos1");
-    ESP_LOGI(TAG, "sent unsubscribe successful, msg_id=%d", msg_id);
     break;
   case MQTT_EVENT_DISCONNECTED:
     ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -66,8 +56,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
   case MQTT_EVENT_SUBSCRIBED:
     ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
-    msg_id = esp_mqtt_client_publish(client, "/topic/qos0", "data", 0, 0, 0);
-    ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
     break;
   case MQTT_EVENT_UNSUBSCRIBED:
     ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
@@ -102,7 +90,7 @@ void mqtt_app_start(void) {
       .credentials.authentication.password = BLE_MESH_PROJ_MQTT_BROKER_PASSWORD,
   };
 
-  esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
+  client = esp_mqtt_client_init(&mqtt_cfg);
   /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
   esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
   esp_mqtt_client_start(client);
