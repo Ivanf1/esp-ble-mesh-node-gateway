@@ -21,14 +21,37 @@
 
 #include "mqtt_app.h"
 #include "mqtt_client.h"
+#include "sdcard.h"
 #include "secrets.h"
 #include "wifi_connect.h"
 
 static const char *TAG = "MQTT";
 esp_mqtt_client_handle_t client;
 static EventGroupHandle_t s_mqtt_event_group;
+const char *mqtt_file = "mqttfile.txt";
+TaskHandle_t send_messages_from_file_task_handle;
 
 #define MQTT_CONNECTED_BIT BIT0
+
+void send_mqtt_messages_from_file(void *pvParameters) {
+  FILE *f = sd_open_file_for_read(mqtt_file);
+  if (f) {
+    ESP_LOGI(TAG, "Begin sending messages from file");
+    char buffer[SD_MAX_LINE_LENGTH];
+    char topic[SD_MAX_LINE_LENGTH];
+    char data[SD_MAX_LINE_LENGTH];
+    while (sd_read_line_from_file(f, buffer, SD_MAX_LINE_LENGTH) == ESP_OK) {
+      strcpy(topic, strtok(buffer, "|"));
+      strcpy(data, strtok(NULL, "|"));
+      send_mqtt_message(buffer, data);
+    }
+    sd_close_file(f);
+    sd_clear_file(mqtt_file);
+  }
+
+  ESP_LOGI(TAG, "End sending messages from file");
+  vTaskDelete(NULL);
+}
 
 /**
  * @brief Event handler registered to receive MQTT events
@@ -47,12 +70,14 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
   case MQTT_EVENT_CONNECTED:
     xEventGroupSetBits(s_mqtt_event_group, MQTT_CONNECTED_BIT);
     ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+    if (sd_get_file_size(mqtt_file) > 0) {
+      xTaskCreate(send_mqtt_messages_from_file, "msg_file", 4096, NULL, 3, &send_messages_from_file_task_handle);
+    }
     break;
   case MQTT_EVENT_DISCONNECTED:
     ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
     xEventGroupClearBits(s_mqtt_event_group, MQTT_CONNECTED_BIT);
     break;
-
   case MQTT_EVENT_SUBSCRIBED:
     ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
     break;
@@ -104,7 +129,17 @@ void on_wifi_status_change(int status) {
   }
 }
 
-void send_mqtt_message(const char *topic, const char *data) { esp_mqtt_client_publish(client, topic, data, 0, 1, 0); }
+void send_mqtt_message(const char *topic, const char *data) {
+  EventBits_t bits = xEventGroupGetBits(s_mqtt_event_group);
+  if (bits & MQTT_CONNECTED_BIT) {
+    esp_mqtt_client_publish(client, topic, data, 0, 1, 0);
+  } else {
+    // store on sd
+    char buffer[SD_MAX_LINE_LENGTH];
+    snprintf(buffer, SD_MAX_LINE_LENGTH, "%s|%s", topic, data);
+    sd_append_to_file(mqtt_file, buffer);
+  }
+}
 
 void mqtt_app_start(void) {
   s_mqtt_event_group = xEventGroupCreate();

@@ -4,6 +4,8 @@
 #include <sys/stat.h>
 #include <sys/unistd.h>
 
+#include "sdcard.h"
+
 #define TAG "SDCARD"
 
 #define MOUNT_POINT "/sdcard"
@@ -12,8 +14,7 @@
 #define PIN_NUM_CLK 18
 #define PIN_NUM_CS 5
 
-#define MAX_PATH_LENGTH 128
-#define MAX_FILE_LINE_LENGTH 255
+#define SD_MAX_PATH_LENGTH 128
 
 static sdmmc_card_t *card;
 
@@ -64,8 +65,8 @@ void sd_init(void) {
 }
 
 void sd_delete_file(const char *filename) {
-  char path_to_file[MAX_PATH_LENGTH];
-  snprintf(path_to_file, MAX_PATH_LENGTH, "%s/%s", MOUNT_POINT, filename);
+  char path_to_file[SD_MAX_PATH_LENGTH];
+  snprintf(path_to_file, SD_MAX_PATH_LENGTH, "%s/%s", MOUNT_POINT, filename);
   // Check if destination file exists before deleting
   struct stat st;
   if (stat(path_to_file, &st) == 0) {
@@ -78,15 +79,17 @@ void sd_delete_file(const char *filename) {
 }
 
 void sd_append_to_file(const char *filename, const char *buffer) {
-  char path_to_file[MAX_PATH_LENGTH];
-  snprintf(path_to_file, MAX_PATH_LENGTH, "%s/%s", MOUNT_POINT, filename);
+  char path_to_file[SD_MAX_PATH_LENGTH];
+  snprintf(path_to_file, SD_MAX_PATH_LENGTH, "%s/%s", MOUNT_POINT, filename);
   ESP_LOGI(TAG, "Opening file %s", path_to_file);
   FILE *f = fopen(path_to_file, "a");
   if (f == NULL) {
     ESP_LOGE(TAG, "Failed to open file for writing");
     return;
   }
-  int res = fprintf(f, buffer, card->cid.name);
+  char line[SD_MAX_LINE_LENGTH];
+  snprintf(line, SD_MAX_LINE_LENGTH, "%s\n", buffer);
+  int res = fprintf(f, line, card->cid.name);
   if (res > 0) {
     ESP_LOGI(TAG, "Buffer written to file %d", res);
   } else {
@@ -96,8 +99,8 @@ void sd_append_to_file(const char *filename, const char *buffer) {
 }
 
 FILE *sd_open_file_for_read(const char *filename) {
-  char path_to_file[MAX_PATH_LENGTH];
-  snprintf(path_to_file, MAX_PATH_LENGTH, "%s/%s", MOUNT_POINT, filename);
+  char path_to_file[SD_MAX_PATH_LENGTH];
+  snprintf(path_to_file, SD_MAX_PATH_LENGTH, "%s/%s", MOUNT_POINT, filename);
   ESP_LOGI(TAG, "Opening file %s", path_to_file);
   FILE *f = fopen(path_to_file, "r");
   if (f == NULL) {
@@ -111,7 +114,7 @@ void sd_close_file(FILE *f) { fclose(f); }
 
 esp_err_t sd_read_line_from_file(FILE *f, char *buffer, size_t size) {
   if (fgets(buffer, size, f)) {
-    // Strip newline
+    // strip newline
     char *pos = strchr(buffer, '\n');
     if (pos) {
       *pos = '\0';
@@ -122,12 +125,29 @@ esp_err_t sd_read_line_from_file(FILE *f, char *buffer, size_t size) {
 }
 
 void sd_clear_file(const char *filename) {
-  char path_to_file[MAX_PATH_LENGTH];
-  snprintf(path_to_file, MAX_PATH_LENGTH, "%s/%s", MOUNT_POINT, filename);
+  char path_to_file[SD_MAX_PATH_LENGTH];
+  snprintf(path_to_file, SD_MAX_PATH_LENGTH, "%s/%s", MOUNT_POINT, filename);
   FILE *f = fopen(path_to_file, "w");
   if (f == NULL) {
     ESP_LOGE(TAG, "Failed to clear file");
     return;
   }
   fclose(f);
+}
+
+long sd_get_file_size(const char *filename) {
+  char path_to_file[SD_MAX_PATH_LENGTH];
+  snprintf(path_to_file, SD_MAX_PATH_LENGTH, "%s/%s", MOUNT_POINT, filename);
+  FILE *f = fopen(path_to_file, "r");
+  if (f == NULL) {
+    ESP_LOGE(TAG, "Failed to open file");
+    return 0;
+  }
+  fseek(f, 0L, SEEK_END);
+  long size = ftell(f);
+  rewind(f);
+  fclose(f);
+  ESP_LOGI(TAG, "file size %d", size);
+
+  return size;
 }

@@ -24,6 +24,8 @@
 
 #define CID_ESP 0x02E5
 
+TaskHandle_t test_send_handle;
+
 static uint8_t dev_uuid[16] = {0xdd, 0xdd};
 
 static esp_ble_mesh_client_t onoff_client;
@@ -221,7 +223,7 @@ void app_main(void) {
     ESP_LOGE(TAG, "Bluetooth mesh init failed (err %d)", err);
   }
 
+  sd_init();
   wifi_init_sta();
   mqtt_app_start();
-  sd_init();
 }
