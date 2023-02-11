@@ -26,25 +26,37 @@ static EventGroupHandle_t s_wifi_event_group;
 
 static const char *TAG = "WIFI";
 
-static int s_retry_num = 0;
+wifi_status_cb_t wifi_event_callback = NULL;
+
+void wifi_register_on_status_change_callback(wifi_status_cb_t callback) { wifi_event_callback = callback; }
+
+int wifi_is_connected(void) {
+  EventBits_t bits = xEventGroupGetBits(s_wifi_event_group);
+  if (bits) {
+    return bits & WIFI_CONNECTED_BIT;
+  } else {
+    return 0;
+  }
+}
 
 static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data) {
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
     esp_wifi_connect();
   } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-    if (s_retry_num < BLE_MESH_PROJ_WIFI_MAX_RETRY) {
-      esp_wifi_connect();
-      s_retry_num++;
-      ESP_LOGI(TAG, "retry to connect to the AP");
-    } else {
-      xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+    xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+    if (wifi_event_callback) {
+      wifi_event_callback(0);
     }
     ESP_LOGI(TAG, "connect to the AP fail");
+    ESP_LOGI(TAG, "retry to connect to the AP");
+    esp_wifi_connect();
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
     ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
-    s_retry_num = 0;
     xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+    if (wifi_event_callback) {
+      wifi_event_callback(1);
+    }
   }
 }
 
@@ -96,7 +108,7 @@ void wifi_init_sta(void) {
   }
 
   /* The event will not be processed after unregister */
-  ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_got_ip));
-  ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, instance_any_id));
-  vEventGroupDelete(s_wifi_event_group);
+  // ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_got_ip));
+  // ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, instance_any_id));
+  // vEventGroupDelete(s_wifi_event_group);
 }
