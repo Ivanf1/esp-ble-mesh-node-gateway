@@ -127,7 +127,7 @@ static void ble_mesh_generic_client_cb(esp_ble_mesh_generic_client_cb_event_t ev
     char status[2];
     snprintf(topic, 16, "ble_mesh/%04x", param->params->ctx.addr);
     snprintf(status, 2, "%d", param->status_cb.onoff_status.present_onoff);
-    send_mqtt_message(topic, status);
+    mqtt_send_message(topic, status);
     break;
   case ESP_BLE_MESH_GENERIC_CLIENT_TIMEOUT_EVT:
     break;

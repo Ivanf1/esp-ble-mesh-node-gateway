@@ -33,7 +33,7 @@ TaskHandle_t send_messages_from_file_task_handle;
 
 #define MQTT_CONNECTED_BIT BIT0
 
-void send_mqtt_messages_from_file(void *pvParameters) {
+void mqtt_send_messages_from_file(void *pvParameters) {
   FILE *f = sd_open_file_for_read(mqtt_file);
   if (f) {
     ESP_LOGI(TAG, "Begin sending messages from file");
@@ -43,7 +43,7 @@ void send_mqtt_messages_from_file(void *pvParameters) {
     while (sd_read_line_from_file(f, buffer, SD_MAX_LINE_LENGTH) == ESP_OK) {
       strcpy(topic, strtok(buffer, "|"));
       strcpy(data, strtok(NULL, "|"));
-      send_mqtt_message(buffer, data);
+      mqtt_send_message(buffer, data);
     }
     sd_close_file(f);
     sd_clear_file(mqtt_file);
@@ -71,7 +71,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     xEventGroupSetBits(s_mqtt_event_group, MQTT_CONNECTED_BIT);
     ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
     if (sd_get_file_size(mqtt_file) > 0) {
-      xTaskCreate(send_mqtt_messages_from_file, "msg_file", 4096, NULL, 3, &send_messages_from_file_task_handle);
+      xTaskCreate(mqtt_send_messages_from_file, "msg_file", 4096, NULL, 3, &send_messages_from_file_task_handle);
     }
     break;
   case MQTT_EVENT_DISCONNECTED:
@@ -129,7 +129,7 @@ void on_wifi_status_change(int status) {
   }
 }
 
-void send_mqtt_message(const char *topic, const char *data) {
+void mqtt_send_message(const char *topic, const char *data) {
   EventBits_t bits = xEventGroupGetBits(s_mqtt_event_group);
   if (bits & MQTT_CONNECTED_BIT) {
     esp_mqtt_client_publish(client, topic, data, 0, 1, 0);
