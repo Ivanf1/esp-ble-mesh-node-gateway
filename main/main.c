@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <sys/unistd.h>
 
 #include "esp_ble_mesh_common_api.h"
 #include "esp_ble_mesh_config_model_api.h"
@@ -14,6 +15,7 @@
 #include "ble_mesh_nvs.h"
 #include "mqtt_app.h"
 #include "mqtt_client.h"
+#include "sdcard.h"
 #include "wifi_connect.h"
 
 #include "sdkconfig.h"
@@ -221,4 +223,5 @@ void app_main(void) {
 
   wifi_init_sta();
   mqtt_app_start();
+  sd_init();
 }
