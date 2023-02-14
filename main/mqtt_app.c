@@ -1,3 +1,5 @@
+#include "mqtt_app.h"
+
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -19,19 +21,22 @@
 #include "lwip/netdb.h"
 #include "lwip/sockets.h"
 
-#include "mqtt_app.h"
 #include "mqtt_client.h"
 #include "sdcard.h"
 #include "secrets.h"
 #include "wifi_connect.h"
 
 static const char *TAG = "MQTT";
-esp_mqtt_client_handle_t client;
+static esp_mqtt_client_handle_t client;
 static EventGroupHandle_t s_mqtt_event_group;
-const char *mqtt_file = "mqttfile.txt";
+static const char *mqtt_file = "mqttfile.txt";
 TaskHandle_t send_messages_from_file_task_handle;
 
 #define MQTT_CONNECTED_BIT BIT0
+
+static char mqtt_broker_uri[MQTT_URI_MAX_LEN];
+static char mqtt_username[MQTT_USERNAME_MAX_LEN];
+static char mqtt_password[MQTT_PASSWORD_MAX_LEN];
 
 void mqtt_send_messages_from_file(void *pvParameters) {
   FILE *f = sd_open_file_for_read(mqtt_file);
@@ -101,17 +106,19 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
   }
 }
 
-static void mqtt_init(void) {
+static void mqtt_init() {
   esp_mqtt_client_config_t mqtt_cfg = {
-      .broker.address.uri = BLE_MESH_PROJ_MQTT_BROKER_URI,
-      .credentials.username = BLE_MESH_PROJ_MQTT_BROKER_USERNAME,
-      .credentials.authentication.password = BLE_MESH_PROJ_MQTT_BROKER_PASSWORD,
+      .broker.address.uri = mqtt_broker_uri,
+      .credentials.username = mqtt_username,
+      .credentials.authentication.password = mqtt_password,
   };
 
   client = esp_mqtt_client_init(&mqtt_cfg);
   /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
   esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
-  esp_mqtt_client_start(client);
+  if (wifi_is_connected()) {
+    esp_mqtt_client_start(client);
+  }
 }
 
 void on_wifi_status_change(int status) {
@@ -141,7 +148,12 @@ void mqtt_send_message(const char *topic, const char *data) {
   }
 }
 
-void mqtt_app_start(void) {
+void mqtt_app_start(const char *broker_uri, size_t broker_uri_len, const char *username, size_t username_len,
+                    const char *password, size_t password_len) {
+  snprintf(mqtt_broker_uri, broker_uri_len, "%s", broker_uri);
+  snprintf(mqtt_username, username_len, "%s", username);
+  snprintf(mqtt_password, password_len, "%s", password);
+
   s_mqtt_event_group = xEventGroupCreate();
   mqtt_init();
   wifi_register_on_status_change_callback(on_wifi_status_change);

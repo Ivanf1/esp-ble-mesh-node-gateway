@@ -31,12 +31,11 @@ wifi_status_cb_t wifi_event_callback = NULL;
 void wifi_register_on_status_change_callback(wifi_status_cb_t callback) { wifi_event_callback = callback; }
 
 int wifi_is_connected(void) {
-  EventBits_t bits = xEventGroupGetBits(s_wifi_event_group);
-  if (bits) {
-    return bits & WIFI_CONNECTED_BIT;
-  } else {
+  if (!s_wifi_event_group) {
     return 0;
   }
+  EventBits_t bits = xEventGroupGetBits(s_wifi_event_group);
+  return bits ? (bits & WIFI_CONNECTED_BIT) : 0;
 }
 
 static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data) {
@@ -60,7 +59,7 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
   }
 }
 
-void wifi_init_sta(void) {
+void wifi_init_sta(const char *ssid, size_t ssid_len, const char *password, size_t password_len) {
   s_wifi_event_group = xEventGroupCreate();
 
   ESP_ERROR_CHECK(esp_netif_init());
@@ -81,11 +80,11 @@ void wifi_init_sta(void) {
   wifi_config_t wifi_config = {
       .sta =
           {
-              .ssid = BLE_MESH_PROJ_WIFI_SSID,
-              .password = BLE_MESH_PROJ_WIFI_PASSWORD,
               .threshold.authmode = WIFI_AUTH_WPA2_PSK,
           },
   };
+  memcpy((void *)&wifi_config.sta.ssid, (void *)ssid, ssid_len);
+  memcpy((void *)&wifi_config.sta.password, (void *)password, password_len);
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_start());
@@ -106,9 +105,4 @@ void wifi_init_sta(void) {
   } else {
     ESP_LOGE(TAG, "UNEXPECTED EVENT");
   }
-
-  /* The event will not be processed after unregister */
-  // ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_got_ip));
-  // ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, instance_any_id));
-  // vEventGroupDelete(s_wifi_event_group);
 }
