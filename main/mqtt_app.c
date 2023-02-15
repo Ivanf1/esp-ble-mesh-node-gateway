@@ -137,15 +137,16 @@ void on_wifi_status_change(int status) {
 }
 
 void mqtt_send_message(const char *topic, const char *data) {
-  EventBits_t bits = xEventGroupGetBits(s_mqtt_event_group);
-  if (bits & MQTT_CONNECTED_BIT) {
-    esp_mqtt_client_publish(client, topic, data, 0, 1, 0);
-  } else {
-    // store on sd
-    char buffer[SD_MAX_LINE_LENGTH];
-    snprintf(buffer, SD_MAX_LINE_LENGTH, "%s|%s", topic, data);
-    sd_append_to_file(mqtt_file, buffer);
+  if (s_mqtt_event_group) {
+    EventBits_t bits = xEventGroupGetBits(s_mqtt_event_group);
+    if (bits & MQTT_CONNECTED_BIT) {
+      esp_mqtt_client_publish(client, topic, data, 0, 1, 0);
+      return;
+    }
   }
+  char buffer[SD_MAX_LINE_LENGTH];
+  snprintf(buffer, SD_MAX_LINE_LENGTH, "%s|%s", topic, data);
+  sd_append_to_file(mqtt_file, buffer);
 }
 
 void mqtt_app_start(const char *broker_uri, size_t broker_uri_len, const char *username, size_t username_len,
