@@ -299,10 +299,9 @@ static void ble_mesh_config_server_cb(esp_ble_mesh_cfg_server_cb_event_t event,
 
 static void example_ble_mesh_custom_model_cb(esp_ble_mesh_model_cb_event_t event,
                                              esp_ble_mesh_model_cb_param_t *param) {
-  ESP_LOGI(TAG, "received");
   switch (event) {
   case ESP_BLE_MESH_MODEL_OPERATION_EVT:
-    ESP_LOGI(TAG, "Model %d", param->model_operation.model->vnd.model_id);
+    ESP_LOGI(TAG, "Received message for Custom Model %d", param->model_operation.model->vnd.model_id);
     if (param->model_operation.opcode == ESP_BLE_MESH_WIFI_CONFIG_MODEL_OP_SEND) {
       uint16_t status = 0;
       ESP_LOGI(TAG, "Wifi config message received");
@@ -311,39 +310,54 @@ static void example_ble_mesh_custom_model_cb(esp_ble_mesh_model_cb_event_t event
         esp_err_t err = esp_ble_mesh_server_model_send_msg(&vnd_models[0], param->model_operation.ctx,
                                                            ESP_BLE_MESH_WIFI_CONFIG_MODEL_OP_STATUS, sizeof(status),
                                                            (uint8_t *)&status);
+        ESP_LOGE(TAG, "Invalid WiFi Config message length: %zu", param->model_operation.length);
         if (err) {
           ESP_LOGE(TAG, "Failed to send message 0x%06x", ESP_BLE_MESH_WIFI_CONFIG_MODEL_OP_STATUS);
         }
         return;
       }
+
       ESP_LOGI(TAG, "Recv 0x%06" PRIx32 ", msg %s, len %d", param->model_operation.opcode, param->model_operation.msg,
                param->model_operation.length);
       // copy message in a null terminated string
       size_t message_size = sizeof(char) * param->model_operation.length + 1;
       char *message = malloc(message_size);
-      snprintf(message, message_size, "%s", param->model_operation.msg);
+      if (!message) {
+        status = 2; // out of memory
+        esp_err_t err = esp_ble_mesh_server_model_send_msg(&vnd_models[1], param->model_operation.ctx,
+                                                           ESP_BLE_MESH_MQTT_CONFIG_MODEL_OP_STATUS, sizeof(status),
+                                                           (uint8_t *)&status);
+        ESP_LOGE(TAG, "Could not allocate memory for WiFi Config message");
+        if (err) {
+          ESP_LOGE(TAG, "Failed to send message 0x%06x", ESP_BLE_MESH_MQTT_CONFIG_MODEL_OP_STATUS);
+        }
+        return;
+      }
 
+      snprintf(message, message_size, "%s", param->model_operation.msg);
       char *e = strchr(message, '.');
       if (!e) {
-        status = 1; // invalid message
+        status = 3; // no separator
         esp_err_t err = esp_ble_mesh_server_model_send_msg(&vnd_models[0], param->model_operation.ctx,
                                                            ESP_BLE_MESH_WIFI_CONFIG_MODEL_OP_STATUS, sizeof(status),
                                                            (uint8_t *)&status);
+        ESP_LOGE(TAG, "No separator for WiFi Config message");
         if (err) {
           ESP_LOGE(TAG, "Failed to send message 0x%06x", ESP_BLE_MESH_WIFI_CONFIG_MODEL_OP_STATUS);
         }
         free(message);
         return;
       }
-      int index = (int)(e - message);
 
+      int index = (int)(e - message);
       size_t wifi_ssid_from_ble_size = (sizeof(char) * index) + 1;
       size_t wifi_pswd_from_ble_size = (sizeof(char) * strlen(message) - (index + 1)) + 1;
       if (wifi_ssid_from_ble_size > WIFI_SSID_MAX_LEN || wifi_pswd_from_ble_size > WIFI_PSWD_MAX_LEN) {
-        status = 2; // invalid parameters length
+        status = 4; // invalid parameters length
         esp_err_t err = esp_ble_mesh_server_model_send_msg(&vnd_models[0], param->model_operation.ctx,
                                                            ESP_BLE_MESH_WIFI_CONFIG_MODEL_OP_STATUS, sizeof(status),
                                                            (uint8_t *)&status);
+        ESP_LOGE(TAG, "Invalid parameters length for WiFi Config message");
         if (err) {
           ESP_LOGE(TAG, "Failed to send message 0x%06x", ESP_BLE_MESH_WIFI_CONFIG_MODEL_OP_STATUS);
         }
@@ -366,54 +380,69 @@ static void example_ble_mesh_custom_model_cb(esp_ble_mesh_model_cb_event_t event
       store_wifi_config(wifi_ssid_from_ble, wifi_pswd_from_ble);
       wifi_init_sta(wifi_ssid_from_ble, wifi_ssid_from_ble_size - 1, wifi_pswd_from_ble, wifi_pswd_from_ble_size - 1);
     }
+
     if (param->model_operation.opcode == ESP_BLE_MESH_MQTT_CONFIG_MODEL_OP_SEND) {
       ESP_LOGI(TAG, "MQTT config message received");
       uint16_t status = 0;
       if (param->model_operation.length == 0) {
         status = 1; // invalid message
-        esp_err_t err = esp_ble_mesh_server_model_send_msg(&vnd_models[0], param->model_operation.ctx,
-                                                           ESP_BLE_MESH_WIFI_CONFIG_MODEL_OP_STATUS, sizeof(status),
+        esp_err_t err = esp_ble_mesh_server_model_send_msg(&vnd_models[1], param->model_operation.ctx,
+                                                           ESP_BLE_MESH_MQTT_CONFIG_MODEL_OP_STATUS, sizeof(status),
                                                            (uint8_t *)&status);
+        ESP_LOGE(TAG, "Invalid MQTT Config message length: %zu", param->model_operation.length);
         if (err) {
-          ESP_LOGE(TAG, "Failed to send message 0x%06x", ESP_BLE_MESH_WIFI_CONFIG_MODEL_OP_STATUS);
+          ESP_LOGE(TAG, "Failed to send message 0x%06x", ESP_BLE_MESH_MQTT_CONFIG_MODEL_OP_STATUS);
         }
         return;
       }
+
       ESP_LOGI(TAG, "Recv 0x%06" PRIx32 ", msg %s, len %d", param->model_operation.opcode, param->model_operation.msg,
                param->model_operation.length);
       // copy message in a null terminated string
       size_t message_size = sizeof(char) * param->model_operation.length + 1;
       char *message = malloc(message_size);
-      snprintf(message, message_size, "%s", param->model_operation.msg);
+      if (!message) {
+        status = 2; // out of memory
+        esp_err_t err = esp_ble_mesh_server_model_send_msg(&vnd_models[1], param->model_operation.ctx,
+                                                           ESP_BLE_MESH_MQTT_CONFIG_MODEL_OP_STATUS, sizeof(status),
+                                                           (uint8_t *)&status);
+        ESP_LOGE(TAG, "Could not allocate memory for MQTT Config message");
+        if (err) {
+          ESP_LOGE(TAG, "Failed to send message 0x%06x", ESP_BLE_MESH_MQTT_CONFIG_MODEL_OP_STATUS);
+        }
+        return;
+      }
 
-      esp_err_t err = esp_ble_mesh_server_model_send_msg(&vnd_models[0], param->model_operation.ctx,
+      snprintf(message, message_size, "%s", param->model_operation.msg);
+      char *broker_uri = strtok(message, "|");
+      char *username = strtok(NULL, "|");
+      char *password = strtok(NULL, "|");
+      if (!broker_uri || !username || !password) {
+        status = 3; // invalid parameters
+        esp_err_t err = esp_ble_mesh_server_model_send_msg(&vnd_models[1], param->model_operation.ctx,
+                                                           ESP_BLE_MESH_MQTT_CONFIG_MODEL_OP_STATUS, sizeof(status),
+                                                           (uint8_t *)&status);
+        ESP_LOGE(TAG, "Invalid parameters for MQTT Config message");
+        if (err) {
+          ESP_LOGE(TAG, "Failed to send message 0x%06x", ESP_BLE_MESH_MQTT_CONFIG_MODEL_OP_STATUS);
+        }
+        free(message);
+        return;
+      }
+
+      snprintf(mqtt_uri, strlen(broker_uri) + 1, "%s", broker_uri);
+      snprintf(mqtt_username, strlen(username) + 1, "%s", username);
+      snprintf(mqtt_password, strlen(password) + 1, "%s", password);
+      free(message);
+
+      esp_err_t err = esp_ble_mesh_server_model_send_msg(&vnd_models[1], param->model_operation.ctx,
                                                          ESP_BLE_MESH_MQTT_CONFIG_MODEL_OP_STATUS, sizeof(status),
                                                          (uint8_t *)&status);
       if (err) {
         ESP_LOGE(TAG, "Failed to send message 0x%06x", ESP_BLE_MESH_MQTT_CONFIG_MODEL_OP_STATUS);
       }
 
-      char *broker_uri = strtok(message, "|");
-      char *username = strtok(NULL, "|");
-      char *password = strtok(NULL, "|");
-      if (!broker_uri || !username || !password) {
-        status = 2; // invalid parameters
-        esp_err_t err = esp_ble_mesh_server_model_send_msg(&vnd_models[0], param->model_operation.ctx,
-                                                           ESP_BLE_MESH_WIFI_CONFIG_MODEL_OP_STATUS, sizeof(status),
-                                                           (uint8_t *)&status);
-        if (err) {
-          ESP_LOGE(TAG, "Failed to send message 0x%06x", ESP_BLE_MESH_WIFI_CONFIG_MODEL_OP_STATUS);
-        }
-        free(message);
-        return;
-      }
-
-      snprintf(mqtt_uri, strlen(broker_uri), "%s", broker_uri);
-      snprintf(mqtt_username, strlen(username), "%s", username);
-      snprintf(mqtt_password, strlen(password), "%s", password);
-      free(message);
-
-      ESP_LOGI(TAG, "uri: %s, username: %s, password: %s", mqtt_uri, mqtt_username, mqtt_password);
+      ESP_LOGI(TAG, "MQTT uri: %s, username: %s, password: %s", mqtt_uri, mqtt_username, mqtt_password);
       store_mqtt_config(mqtt_uri, mqtt_username, mqtt_password);
       mqtt_app_start(mqtt_uri, strlen(mqtt_uri), mqtt_username, strlen(mqtt_username), mqtt_password,
                      strlen(mqtt_password));
@@ -462,8 +491,8 @@ void app_main(void) {
   ESP_LOGI(TAG, "Initializing...");
 
   err = nvs_flash_init();
-  // nvs_flash_erase();
-  // err = nvs_flash_init();
+  nvs_flash_erase();
+  err = nvs_flash_init();
   if (err == ESP_ERR_NVS_NO_FREE_PAGES) {
     ESP_ERROR_CHECK(nvs_flash_erase());
     err = nvs_flash_init();
